@@ -1,0 +1,487 @@
+### Definitons (Removed in Later Panda3ds) ###
+ConfigVariableBool temp_hpr_fix	("temp-hpr-fix", true, PRC_DESC("Set this true to compute hpr's correctly. Historically, Panda has applied these in the wrong order, and roll was backwards relative to the other two.  Set this false if you need compatibility with Panda's old hpr calculations."));
+
+extern EXPCL_LIBOTP ConfigVariableBool temp_hpr_fix;
+
+
+### Nametag2d (Class) ###
+
+// Is the Nametag Wordwrap 8.0 or 8.075?
+Nametag2d::Nametag2d() : Nametag(8.0) {
+    m_on = NametagGlobals::_master_arrows_on; //NametagGlobals::get_master_arrows_on();
+    m_trans_vec = LVecBase3f(0, 0, 0);
+    m_chat_contents = 0;
+    m_seq2d = 0;
+    m_contents = 3;
+    m_cell_width = 1.0;
+
+    set_bounds(new OmniBoundingVolume());
+    set_cull_callback();
+
+    set_name("unnamed");
+
+    update_contents();
+}
+
+bool Nametag2d::cull_callback(CullTraverser *, CullTraverserData &) {
+    rotate_arrow();
+
+    // This might not be accurate so it's commented out for now.
+    /*if (m_visible && m_popup_region) {
+        m_seq = get_group()->get_region_seq();
+    }*/
+
+    return true;
+}
+
+void Nametag2d::frame_callback() {
+    if (m_visible && m_popup_region) {
+        m_seq = m_group->get_region_seq();
+    }
+    if (m_group) {
+        m_group->update_regions();
+    }
+}
+
+void Nametag2d::generate_chat(ChatBalloon* balloon) {
+    int state = get_state();
+    LVecBase4f text_color = LVecBase4f(NametagGlobals::get_chat_fg(m_group->get_color_code(), state));
+    LVecBase4f balloon_color = LVecBase4f(NametagGlobals::get_chat_bg(m_group->get_color_code(), state));
+
+    if (m_group->get_chat_flags() & NametagGlobals::CF_quicktalker) {
+        balloon_color = LVecBase4f(m_group->get_qt_color());
+    }
+
+    balloon_color[3] = max(balloon_color[3], NametagGlobals::get_min_2d_alpha());
+    balloon_color[3] = min(balloon_color[3], NametagGlobals::get_max_2d_alpha());
+
+    std::string text = m_group->get_chat();
+    if (m_group->get_name().size()) {
+        text = m_group->get_name() + ": " + text;
+    }
+
+    bool has_page_button = false;
+    bool has_quit_button = false;
+    if (!m_group->has_timeout()) {
+        has_page_button = (m_group->get_chat_flags() & NametagGlobals::CF_quit_button) > 0;
+        if (m_group->get_page_number() >= m_group->get_num_chat_pages() - 1) {
+            if (m_group->get_chat_flags() & NametagGlobals::CF_quit_button) {
+                has_page_button = false;
+                has_quit_button = true;
+            }
+        }
+    }
+
+    NodePath page_button = NodePath();
+    if (has_page_button) {
+        page_button = NametagGlobals::get_page_button(state);
+    } else if (has_quit_button) {
+        page_button = NametagGlobals::get_quit_button(state);
+    }
+
+    bool reversed = (m_group->get_chat_flags() & NametagGlobals::CF_reversed) > 0;
+    PT(PandaNode) balloon_result = balloon->generate(text, m_group->get_chat_font(), m_wordwrap,
+                                                     text_color, balloon_color, false,
+                                                     m_has_draw_order, m_draw_order, page_button,
+                                                     m_group->will_have_button(), reversed, &NodePath());
+
+    m_root_np = m_np.attach_new_node(balloon_result);
+
+    //float wordwrap = 8.0;  XXX THIS IS A GUESS - Use if wordwrap causes issues.
+    float wordwrap = m_wordwrap;
+    float double_cell_width = 2 * m_cell_width;
+    float wrap_width_calc = double_cell_width / (wordwrap + 1.0);
+    float balloon_text_height_hscaled = balloon->get_text_height() * balloon->get_hscale();
+    
+    // The commented code below is the correct accurate code, 
+    // But it'll incorrectly position it relative to the margin.
+    // Further investagation is needed to as to why this is.
+    float hscale_big_calc = (balloon->get_hscale() * 10.0) * 5.0; // My RE
+    //float hscale_big_calc = balloon->get_hscale() * 5.0; // Original RE
+    
+    float final_wrap = balloon_text_height_hscaled * 0.5;
+    float wrapping_scale = -(balloon->get_hscale() * 0.5 + hscale_big_calc);
+    float origin_wrap = -(NametagGlobals::get_balloon_text_origin()[2] + final_wrap);
+    LMatrix4f mat = LMatrix4f(wrap_width_calc, 0, 0, 0,
+                               0, wrap_width_calc, 0, 0,
+                               0, 0, wrap_width_calc, 0,
+                               wrapping_scale * wrap_width_calc, 0, origin_wrap * wrap_width_calc, 1.0);
+
+    m_root_np.set_mat(mat);
+
+    SceneGraphReducer reducer = SceneGraphReducer();
+    reducer.apply_attribs(m_root_np.node());
+
+    LMatrix4f transform_mat = m_np.get_net_transform()->get_mat();
+
+    // This original guess of this is closer to accurate then you'd first assume. 
+    // However it is not entirely accurate. The points aren't caculated all the way correctly and 
+    // are used in reverse.
+    //float pointX = wrapping_scale * wrap_width_calc;
+    float pointX = hscale_big_calc * wrap_width_calc;
+    //float pointZ = origin_wrap * wrap_width_calc;
+    float pointZ = (final_wrap + 1.0) * wrap_width_calc;
+    
+    LVecBase3f point1 = transform_mat.xform_point(LPoint3f(-pointX, 0.0, -pointZ));
+    LVecBase3f point2 = transform_mat.xform_point(LPoint3f(pointX, 0.0, pointZ));
+
+    LVecBase4f frame = LVecBase4f(point1[0], point2[0], point1[2], point2[2]);
+    set_region(frame, 0);
+}
+
+// TODO: Check this agaisnt the decompilation
+void Nametag2d::generate_name() {
+    int state = get_state();
+    LVecBase4f name_fg = LVecBase4f(NametagGlobals::get_name_fg(get_group()->get_color_code(), state));
+    LVecBase4f name_bg = LVecBase4f(NametagGlobals::get_name_bg(get_group()->get_color_code(), state));
+    name_bg[3] = max(name_bg[3], NametagGlobals::get_min_2d_alpha());
+    name_bg[3] = min(name_bg[3], NametagGlobals::get_max_2d_alpha());
+
+    float frame_z = NametagGlobals::get_card_pad()[3] + get_group()->get_name_frame()[3];
+    float frame_y = get_group()->get_name_frame()[2] - NametagGlobals::get_card_pad()[2];
+
+    float wordwrap = get_group()->get_name_wordwrap();
+    double wrap_width_calc = m_cell_width / wordwrap * 2.0;
+    
+    // These can be condensed into the mat assignment.
+    double v66 = 0.333 * (1.0 / wrap_width_calc) - (frame_y + frame_z) * 0.5;
+    float v18 = min(1.0 / wrap_width_calc - frame_z, v66);
+
+    LMatrix4f mat = LMatrix4f(wrap_width_calc, 0, 0, 0,
+                              0, wrap_width_calc, 0, 0,
+                              0, 0, wrap_width_calc, 0,
+                              0, 0, v18 * wrap_width_calc, 1.0);
+    LMatrix4f mat_cpy = mat;
+
+    if (name_bg[3] != 0.0) {
+        CardMaker card = CardMaker("nametag");
+        card.set_frame(get_group()->get_name_frame()[0] - NametagGlobals::get_card_pad()[0],
+                       get_group()->get_name_frame()[1] + NametagGlobals::get_card_pad()[1],
+                       frame_y, frame_z);
+        card.set_color(name_bg);
+        if (NametagGlobals::get_nametag_card()) {
+            card.set_source_geometry(NametagGlobals::get_nametag_card().node(), NametagGlobals::get_nametag_card_frame());
+        }
+
+        m_attached_np = m_np.attach_new_node(card.generate());
+        m_attached_np.set_mat(mat);
+        if (name_bg[3] != 1.0) {
+            m_attached_np.set_transparency(TransparencyAttrib::M_alpha);
+        }
+
+        if (m_has_draw_order) {
+            ConfigVariableString bin("nametag-fixed-bin", "fixed");
+            m_attached_np.set_bin(bin, m_draw_order);
+        }
+    }
+
+    m_copied_np = get_group()->copy_name_to(m_np);
+    m_copied_np.set_mat(mat_cpy);
+    if (m_has_draw_order) {
+        ConfigVariableString bin("nametag-fixed-bin", "fixed");
+        m_copied_np.set_bin(bin, m_draw_order);
+    }
+
+    m_copied_np.set_color(name_fg);
+    if (name_fg[3] != 1.0) {
+        m_copied_np.set_transparency(TransparencyAttrib::M_alpha);
+    }
+
+    SceneGraphReducer reducer = SceneGraphReducer();
+    reducer.apply_attribs(m_copied_np.node());
+    reducer.apply_attribs(m_attached_np.node());
+
+    if (NametagGlobals::get_arrow_model()) {
+        m_arrow = NametagGlobals::get_arrow_model().copy_to(m_np);
+        if (m_has_draw_order) {
+            ConfigVariableString bin("nametag-fixed-bin", "fixed");
+            m_arrow.set_bin(bin, m_draw_order);
+        }
+
+        m_trans_vec = mat_cpy.xform_point(LPoint3f(0, 0, frame_y - 1.0));
+
+        LVecBase4f color = LVecBase4f(NametagGlobals::get_arrow_color(get_group()->get_color_code()));
+        m_arrow.set_color(color);
+        if (color[3] != 1.0) {
+            m_arrow.set_transparency(TransparencyAttrib::M_alpha);
+        }
+
+        rotate_arrow();
+    } else if (m_arrow) {
+        m_arrow.remove_node();
+    }
+
+    mat = m_np.get_net_transform()->get_mat();
+    mat = mat_cpy * mat;
+
+    LVecBase3f point_1 = mat.xform_point(LPoint3f(get_group()->get_name_frame()[0] - NametagGlobals::get_card_pad()[0], 0, frame_y));
+    LVecBase3f point_2 = mat.xform_point(LPoint3f(get_group()->get_name_frame()[1] + NametagGlobals::get_card_pad()[1], 0, frame_z));
+    LVecBase4f frame = LVecBase4f(point_1[0], point_2[0], point_1[2], point_2[2]);
+    set_region(frame, 0);
+}
+
+// Does this return an int or an double?
+int Nametag2d::get_distance2() {
+    NodePath *np = &m_avatar;
+    if (!m_avatar) {
+        if (m_group) {
+            np = m_group->get_avatar();
+        }
+    }
+    if (np->is_empty()) {
+        return 0;
+    }
+    return np.get_pos(NametagGlobals::get_toon()).length_squared();
+}
+
+int Nametag2d::get_score() {
+    if (m_group) {
+        return 1000 - get_distance2();
+    }
+    return 0;
+}
+
+
+### Nametag (Class) ###
+
+Nametag::Nametag(float wordwrap) : ClickablePopup() {
+    m_wordwrap = wordwrap
+    m_contents = NametagGlobals::CF_speech | NametagGlobals::CF_thought | NametagGlobals::CF_quicktalker;
+    m_active = true;
+    m_draw_order = 0;
+    
+    m_ival_name.resize(255);
+    sprintf((char *)m_ival_name.c_str(), "flash-%p", this);
+    m_ival_name.shrink_to_fit();
+}
+
+void Nametag::clear_avatar() {
+    m_avatar = NodePath();
+}
+
+void Nametag::clear_draw_order() {
+    m_has_draw_order = 0;
+    update_contents();
+}
+
+void Nametag::clear_region() {
+    if (m_has_region) {
+        if (m_mouse_watcher) {
+            m_mouse_watcher->remove_region(m_popup_region);
+        }
+       m_has_region = 0;
+    }
+    m_seq.clear();
+}
+
+void Nametag::click() {
+    if (m_group) {
+        m_group->click();
+    }
+}
+
+void Nametag::deactivate() {
+    clear_region();
+}
+
+int Nametag::determine_contents() {
+    if (is_group_managed()) {
+        int full_contents = m_contents & m_group->get_contents();
+        int chat_flags = m_group->get_chat_flags();
+
+        if (chat_flags & NametagGlobals::CF_speech) {
+            if (full_contents & Nametag::C_speech) {
+                return Nametag::C_speech;
+            }
+        } else if (chat_flags & NametagGlobals::CF_thought && full_contents & Nametag::C_thought) {
+            return Nametag::C_thought;
+        }
+        if (full_contents & Nametag::C_name && m_group->get_name().size() > 0 && NametagGlobals::get_master_nametags_visible()) {
+            return Nametag::C_name;
+        }
+    }
+    return 0;
+}
+
+bool Nametag::display_as_active() {
+    bool active = 0;
+
+    if (m_group) {
+        if (!m_active) {
+          return 0;
+        }
+        active = m_group->display_as_active() == 0;
+    } else {
+        if (!m_active) {
+            return 0;
+        }
+        active = NametagGlobals::_master_nametags_active == 0;
+    }
+    if (!active) {
+        return 1;
+    }
+    return 0;
+}
+
+NodePath Nametag::get_avatar() {
+    return m_avatar;
+}
+
+double Nametag::get_chat_wordwrap() {
+    return m_wordwrap;
+}
+
+int Nametag::get_contents() {
+    return m_contents;
+}
+
+NametagGroup *Nametag::get_group() {
+    return m_group;
+}
+
+int Nametag::get_state() {
+    if (m_group) {
+        if (!m_active || !m_group->display_as_active()) {
+            return PGButton::S_inactive;
+        }
+    } else if (!m_active || !NametagGlobals::_master_nametags_active) {
+        return PGButton::S_inactive;
+    }
+    return m_state;
+}
+
+bool Nametag::has_group() {
+    return m_group != 0;
+}
+
+bool Nametag::is_active() {
+    return m_active;
+}
+
+bool Nametag::is_group_managed() {
+    return m_group && m_group->is_managed();
+}
+
+void Nametag::keep_region() {
+    // Original code only checks for m_popup_region when it should also check for
+    // m_group to be secure.
+    if (m_popup_region && m_group) {
+        m_seq = m_group->get_region_seq();
+    }
+}
+
+void Nametag::manage(MarginManager *manager) {
+    update_contents();
+}
+
+void Nametag::set_active(bool active) {
+    m_active = active;
+    update_contents();
+}
+
+void Nametag::set_avatar(NodePath node) {
+    m_avatar = node;
+}
+
+void Nametag::set_chat_wordwrap(float wordwrap) {
+    m_wordwrap = wordwrap;
+}
+
+void Nametag::set_contents(int flags) {
+    m_contents = flags;
+    update_contents();
+}
+
+void Nametag::set_draw_order(int draw_order) {
+    m_draw_order = draw_order;
+    m_has_draw_order = true;
+    update_contents();
+}
+
+void Nametag::set_region(LVecBase4f *frame, int sort) {
+    if (m_popup_region) {
+        // Decompiled code
+        //m_popup_region->_frame = frame;
+        //m_popup_region->_area = (m_popup_region->_frame[0] - m_popup_region->_frame[1]) * (m_popup_region->_frame[2] - m_popup_region->_frame[3]);
+        
+        m_popup_region->set_frame(frame);
+    } else {
+        std::string region_name(get_type().get_name() + "-" + group->get_name());
+        PopupMouseWatcherRegion *new_region = new PopupMouseWatcherRegion::PopupMouseWatcherRegion(this, region_name, frame);
+        if (new_region != m_popup_region) {
+            m_popup_region = new_region;
+        }
+    }
+    m_popup_region->set_sort(sort);
+    m_seq = m_group->get_region_seq();
+}
+
+void Nametag::start_flash(NodePath np) {
+    stop_flash();
+
+    LVecBase4f out_color = LVecBase4f(1.0, 1.0, 1.0, 0.5);
+    LVecBase4f in_color = LVecBase4f(1.0, 1.0, 1.0, 1.0);
+
+    PT(CLerpNodePathInterval) color_interval_out = new CLerpNodePathInterval("easeOut", 0.5, CLerpInterval::BT_ease_out, true, false, np, NodePath());
+    color_interval_out->set_end_color(out_color);
+    color_interval_out->set_start_color(in_color);
+
+    PT(CLerpNodePathInterval) color_interval_in = new CLerpNodePathInterval("easeIn", 0.5, CLerpInterval::BT_ease_in, true, false, np, NodePath());
+    color_interval_in->set_end_color(in_color);
+    color_interval_in->set_start_color(out_color);
+
+    m_ival = new CMetaInterval(m_ival_name);
+    m_ival->add_c_interval(color_interval_out, 0, CMetaInterval::RS_previous_end);
+    m_ival->add_c_interval(color_interval_in, 0, CMetaInterval::RS_previous_end);
+    m_ival->loop(0.0, -1.0, 1.0);
+}
+
+void Nametag::stop_flash() {
+    if (m_ival) {
+        m_ival->finish();
+        m_ival = nullptr;
+    }
+}
+
+void Nametag::unmanage(MarginManager *manager) {
+    update_contents();
+    clear_region();
+}
+
+void Nametag::update_region(UpdateSeq seq) {
+    bool is_active = false;
+
+    if (seq == m_seq) {
+        is_active = display_as_active();
+    }
+
+    if (m_has_region) {
+        if (m_mouse_watcher != NametagGlobals::get_mouse_watcher()) {
+            if (m_mouse_watcher) {
+                m_mouse_watcher->remove_region(m_popup_region);
+            }
+            m_has_region = false;
+            set_state(PGButton::S_ready);
+        }
+    }
+
+    if (is_active) {
+        if ((!m_has_region) && m_popup_region) {
+            if (m_mouse_watcher != NametagGlobals::get_mouse_watcher()) {
+                m_mouse_watcher = NametagGlobals::get_mouse_watcher();
+            }
+
+            if (m_mouse_watcher) {
+                m_mouse_watcher->add_region(m_popup_region);
+            }
+            m_has_region = true;
+        }
+    } else if (m_has_region) {
+        if (m_mouse_watcher && m_popup_region) {
+            m_mouse_watcher->remove_region(m_popup_region);
+        }
+        m_has_region = false;
+        m_mouse_watcher = (MouseWatcher*)nullptr;
+        set_state(PGButton::S_ready);
+    }
+}
