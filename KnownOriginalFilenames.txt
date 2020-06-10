@@ -1,0 +1,8 @@
+c:\cygwin\home\vrstudio\build\install\dtool\built\include\notifyCategoryProxy.I
+
+c:\cygwin\home\vrstudio\build\install\panda\built\include\pointerToVoid.I
+c:\cygwin\home\vrstudio\build\install\panda\built\include\nodePath.I
+c:\cygwin\home\vrstudio\build\install\panda\built\include\nodePathComponent.I
+c:\cygwin\home\vrstudio\build\install\panda\built\include\referenceCount.I
+
+c:\cygwin\home\vrstudio\build\install\otp\src\nametag\nametagGroup.cxx
