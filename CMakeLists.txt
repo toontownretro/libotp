@@ -59,13 +59,57 @@ set(MOVEMENT_FILES
     src/movement/cMoverGroup.I
 )
 
+set(NAMETAG_FILES
+    src/nametag/config_nametag.cxx
+    src/nametag/config_nametag.h
+    src/nametag/chatBalloon.cxx
+    src/nametag/chatBalloon.h
+    src/nametag/chatBalloon.I
+    src/nametag/chatFlags.h
+    src/nametag/clickablePopup.cxx
+    src/nametag/clickablePopup.h
+    src/nametag/clickablePopup.I
+    src/nametag/marginManager.cxx
+    src/nametag/marginManager.h
+    src/nametag/marginManager.I
+    src/nametag/marginPopup.cxx
+    src/nametag/marginPopup.h
+    src/nametag/marginPopup.I
+    src/nametag/nametag.cxx
+    src/nametag/nametag.h
+    src/nametag/nametag.I
+    src/nametag/nametag2d.cxx
+    src/nametag/nametag2d.h
+    src/nametag/nametag2d.I
+    src/nametag/nametag3d.cxx
+    src/nametag/nametag3d.h
+    src/nametag/nametag3d.I
+    src/nametag/nametagFloat2d.cxx
+    src/nametag/nametagFloat2d.h
+    src/nametag/nametagFloat3d.cxx
+    src/nametag/nametagFloat3d.h
+    src/nametag/nametagGlobals.cxx
+    src/nametag/nametagGlobals.h
+    src/nametag/nametagGroup.cxx
+    src/nametag/nametagGroup.h
+    src/nametag/nametagGroup.I
+    src/nametag/popupMouseWatcherRegion.cxx
+    src/nametag/popupMouseWatcherRegion.h
+    src/nametag/popupMouseWatcherRegion.I
+    src/nametag/whisperPopup.cxx
+    src/nametag/whisperPopup.h
+    src/nametag/whisperPopup.I
+)
+
 set(IGATE_FILES
     src/movement_igate.cxx
+    src/nametag_igate.cxx
     src/libotp_module.cxx
 )
 
 include_directories(src/otpbase)
 include_directories(src/movement)
+include_directories(src/nametag)
 include_directories(${PANDA_DIR}/include)
 include_directories(${Python_INCLUDE_DIRS})
 include_directories(/usr/include/eigen3)
@@ -135,6 +179,7 @@ if(NOT BUILD_STATIC_LIB)
         add_library(libotp SHARED
             ${OTPBASE_FILES}
             ${MOVEMENT_FILES}
+            ${NAMETAG_FILES}
             ${IGATE_FILES}
         )
         SET_TARGET_PROPERTIES(libotp PROPERTIES SUFFIX ".pyd")
@@ -148,6 +193,7 @@ if(NOT BUILD_STATIC_LIB)
         add_library(otp MODULE
             ${OTPBASE_FILES}
             ${MOVEMENT_FILES}
+            ${NAMETAG_FILES}
             ${IGATE_FILES}
         )
         target_link_libraries(otp otp ${PANDA_LIBS} ${Python_LIBRARIES})
@@ -163,6 +209,7 @@ else()
         add_library(libotp STATIC
             ${OTPBASE_FILES}
             ${MOVEMENT_FILES}
+            ${NAMETAG_FILES}
             ${IGATE_FILES}
         )
         add_custom_command(TARGET libotp
@@ -174,6 +221,7 @@ else()
         add_library(otp STATIC
             ${OTPBASE_FILES}
             ${MOVEMENT_FILES}
+            ${NAMETAG_FILES}
             ${IGATE_FILES}
         )
         add_custom_command(TARGET otp
@@ -187,4 +235,5 @@ endif()
 ### Setup source groups and defines for configurables ###
 source_group("otpbase" FILES ${OTPBASE_FILES})
 source_group("movement" FILES ${MOVEMENT_FILES})
+source_group("nametag" FILES ${NAMETAG_FILES})
 source_group("interrogate_files" FILES ${IGATE_FILES})

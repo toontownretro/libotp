@@ -19,7 +19,7 @@ def interrogate(module):
     print('Interrogating', module)
     cmd = os.path.join(pandadir, 'bin', 'interrogate')
     cmd += ' -D__inline -DCPPPARSER -DP3_INTERROGATE=1 -D__cplusplus -fnames -string -refcount -assert'
-    cmd += ' -S"%(pandadir)s/include/parser-inc" -S"%(pandadir)s/include" -I"%(pandadir)s/include" -I"%(srcdir)s/movement"'
+    cmd += ' -S"%(pandadir)s/include/parser-inc" -S"%(pandadir)s/include" -I"%(pandadir)s/include" -I"%(srcdir)s/movement" -I"%(srcdir)s/nametag"'
     cmd += ' -I"%(srcdir)s/otpbase"'
     cmd += ' -srcdir "%(srcdir)s/%(module)s"'
     cmd += ' -oc "%(srcdir)s/%(module)s_igate.cxx" -od "%(srcdir)s/lib%(module)s.in" -python-native -DCPPPARSER -D__STDC__=1'
@@ -33,10 +33,10 @@ def interrogate(module):
     
     run_command(cmd)
 
-for module in ('movement',):
+for module in ('movement', 'nametag'):
     interrogate(module)
 
 os.chdir(srcdir)
 cmd = os.path.join(pandadir, 'bin', 'interrogate_module') + ' -python-native -oc libotp_module.cxx'
-cmd += ' -library libotp -module libotp libmovement.in'
+cmd += ' -library libotp -module libotp libnametag.in libmovement.in'
 run_command(cmd)
